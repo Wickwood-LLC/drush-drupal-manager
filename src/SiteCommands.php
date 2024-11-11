@@ -161,15 +161,10 @@ class SiteCommands extends DrushCommands {
         $this->io()->writeln('You have just selected:');
         $this->io()->writeln($selected_backup_file_info);
 
-        $selected_backup_file_info->getBasename();
-
         $backup_file_path = Path::join($backup_dir, $selected_backup_file_info->getBasename());
-        $extract_dir = rtrim($selected_backup_file_info->getBasename(), BackupFileInfo::BACKUP_EXTENSION . '.gz');
 
-        $backup_file_path_tar = rtrim($backup_file_path, '.gz');
-
-        $this->gunzip($backup_file_path, $backup_file_path_tar);
-        $this->untar($backup_file_path_tar, $extract_dir);
+        $backup_file_path_tar = $this->gunzip($backup_file_path);
+        $extract_dir = $this->untar($backup_file_path_tar);
       }
     }
   }
@@ -177,7 +172,9 @@ class SiteCommands extends DrushCommands {
   /**
    * Unzip a gzip file.
    */
-  public function gunzip($gz_file_path, $target_file_path) {
+  public function gunzip($gz_file_path) {
+    $target_file_path = rtrim($gz_file_path, '.gz');
+
     $gz = gzopen($gz_file_path, 'rb');
 
     if (file_exists($target_file_path)) {
@@ -188,6 +185,7 @@ class SiteCommands extends DrushCommands {
     stream_copy_to_stream($gz, $dest);
     gzclose($gz);
     fclose($dest);
+    return $target_file_path;
   }
 
   public function untar($tar_file_path) {
@@ -204,5 +202,6 @@ class SiteCommands extends DrushCommands {
     // // unarchive from the tar
     $phar = new \PharData($tar_file_path);
     $phar->extractTo($extract_dir_full_path);
+    return $extract_dir_full_path;
   }
 }

@@ -9,6 +9,11 @@
   "require-dev": {
     "drupal/core": "^10.0 | ^11.0"
   },
+  "autoload-dev": {
+    "psr-4": {
+      "Drush\\Commands\\drush_drupal_manager": "src/Commands"
+    }
+  },
   "license": "GPL-2.0+",
   "authors": [
     {

@@ -5,11 +5,12 @@ namespace Drush\drush_drupal_manager;
 use Symfony\Component\Finder\SplFileInfo;
 use Archive_Tar;
 use Symfony\Component\Yaml\Yaml;
+use Symfony\Component\Console\Helper\FormatterHelper;
 
 class BackupFileInfo {
   const BACKUP_METADATA_FILENAME = '.ddm-backup.info.yml';
   const DATETIME_FORMAT = 'Y-m-d-H-i-s';
-  const BACKUP_EXTENSION = '.ddm.tar.gz';
+  const BACKUP_EXTENSION = '.ddm.tar';
 
   public $file;
 
@@ -72,18 +73,8 @@ class BackupFileInfo {
   }
 
   public function __toString() {
-    $file_size = static::humanFileSize($this->file->getSize());
+    $file_size = FormatterHelper::formatMemory($this->file->getSize());
     return "Backup File: {$this->getBasename()}\n\tTitle: <fg=yellow;options=bold>{$this->title}</>\n\tPlatform: {$this->platform}\n\tSize: {$file_size}\n\tDate and Time: {$this->date_time->format('Y-m-d H:i:s e')}";
-  }
-
-  public static function humanFileSize($size, $unit="") {
-    if( (!$unit && $size >= 1<<30) || $unit == "GB")
-      return number_format($size/(1<<30),2)."GB";
-    if( (!$unit && $size >= 1<<20) || $unit == "MB")
-      return number_format($size/(1<<20),2)."MB";
-    if( (!$unit && $size >= 1<<10) || $unit == "KB")
-      return number_format($size/(1<<10),2)."KB";
-    return number_format($size)." bytes";
   }
 
   public static function getBackupFileName($site_name, $platform_name, $title, $timestamp_string, $db_only = FALSE) {
@@ -102,10 +93,10 @@ class BackupFileInfo {
 
     $backup_file_name = $site_name . '--' . $platform_name . '--' . $timestamp_string . '--' . $filename_safe_description;
     if ($db_only) {
-      $backup_file_name .= '.sql';
+      $backup_file_name .= '.ddm.sql';
     }
     else {
-      $backup_file_name .= '.tar';
+      $backup_file_name .= static::BACKUP_EXTENSION;
     }
     return $backup_file_name;
   }

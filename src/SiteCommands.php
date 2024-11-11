@@ -11,6 +11,7 @@ use Drush\Drush;
 use Drush\Boot\DrupalBootLevels;
 use Drush\Sql\SqlBase;
 use Drush\drush_drupal_manager\BackupFileInfo;
+use Symfony\Component\Console\Helper\FormatterHelper;
 
 /**
  * Command file for setting-get.
@@ -29,7 +30,7 @@ class SiteCommands extends DrushCommands {
     $temporary_file = $file_system->tempnam($temporary_dir, 'ddm_');
     unlink($temporary_file);
     $file_system->mkdir($temporary_file);
-    $this->io()->writeln($temporary_file);
+
     $bootstrapManager = Drush::bootstrapManager();
     $bootstrapManager->doBootstrap(DrupalBootLevels::FULL);
     $root = $bootstrapManager->getRoot();
@@ -54,20 +55,30 @@ class SiteCommands extends DrushCommands {
       'data-only' => false,
       'ordered-dump' => false,
       'gzip' => TRUE,
-      // 'extra' => self::REQ,
-      // 'extra-dump' => self::REQ,
-      'format' => 'null'
+      'extra' => NULL,
+      'extra-dump' => NULL,
+      'format' => 'null',
+      'skip-tables-key' => '',
+      'skip-tables-list' => '',
+      'structure-tables-key' => '',
+      'structure-tables-list' => '',
+      'tables-key' => '',
+      'tables-list' => '',
     ];
+
+    $this->io()->writeln('Creating database dump ... ');
     $sql = SqlBase::create($options);
     $return = $sql->dump();
-    $this->io()->writeln($return);
 
     $backup_file_name = BackupFileInfo::getBackupFileName($site_name, $platform_name, $description, $timestamp_string);
 
-    $tar_file_path = Path::join($temporary_dir, $backup_file_name) . ".tar";
+    $tar_file_path = Path::join($temporary_dir, $backup_file_name);
+    $this->io()->writeln('Creating archive ... ');
     $tar = new Archive_Tar($tar_file_path);
+    $tar->addModify([$temporary_file], '', $temporary_file);
 
-    $gz_file_path = Path::join($temporary_dir, $backup_file_name) . BackupFileInfo::BACKUP_EXTENSION;
+    $this->io()->writeln('Compressing the archive ... ');
+    $gz_file_path = $tar_file_path . '.gz';
     // Open the gz file (w9 is the highest compression)
     $fp = gzopen ($gz_file_path, 'w9');
 
@@ -76,6 +87,9 @@ class SiteCommands extends DrushCommands {
 
     // Close the gz file and we're done
     gzclose($fp);
+    $file_system->remove([$tar_file_path, $temporary_file]);
+
+    $this->io()->success('Backup created "' . $gz_file_path . '.gz" (' . FormatterHelper::formatMemory(filesize($gz_file_path)) . ')');
   }
 
 }

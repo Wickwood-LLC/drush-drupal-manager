@@ -1,5 +1,5 @@
 <?php
-namespace Drush\Commands\drupal_manager;
+namespace Drush\Commands\drush_drupal_manager;
 
 use Drupal\Core\Site\Settings;
 use Drush\Commands\DrushCommands;

@@ -11,6 +11,7 @@ use Drush\Drush;
 use Drush\Boot\DrupalBootLevels;
 use Drush\Sql\SqlBase;
 use Drush\drush_drupal_manager\BackupFileInfo;
+use Drush\drush_drupal_manager\ConfigTrait;
 use Symfony\Component\Console\Helper\FormatterHelper;
 
 /**
@@ -18,12 +19,24 @@ use Symfony\Component\Console\Helper\FormatterHelper;
  */
 class SiteCommands extends DrushCommands {
 
+  use ConfigTrait;
+
   /**
    * Create backup for the site
    */
   #[CLI\Command(name: 'site:backup', aliases: [])]
   #[CLI\Argument(name: 'description', description: 'Describe the backup. It will become part of the backup file so make it not too long.')]
   public function get($description) {
+    $backup_dir = $this->getBackupDir();
+    if (empty($backup_dir)) {
+      $this->io()->error("Backup directory is not configured!");
+      return static::EXIT_FAILURE;
+    }
+    else if (!is_dir($backup_dir)) {
+      $this->io()->error("Backup directory '$backup_dir' does not exist!");
+      return static::EXIT_FAILURE;
+    }
+
     $timestamp_string = BackupFileInfo::getTimestampString();
     $file_system = new Filesystem();
     $temporary_dir = \sys_get_temp_dir();
@@ -78,7 +91,7 @@ class SiteCommands extends DrushCommands {
     $tar->addModify([$temporary_file], '', $temporary_file);
 
     $this->io()->writeln('Compressing the archive ... ');
-    $gz_file_path = $tar_file_path . '.gz';
+    $gz_file_path = Path::join($backup_dir, basename($tar_file_path )) . '.gz';
     // Open the gz file (w9 is the highest compression)
     $fp = gzopen ($gz_file_path, 'w9');
 
@@ -89,7 +102,7 @@ class SiteCommands extends DrushCommands {
     gzclose($fp);
     $file_system->remove([$tar_file_path, $temporary_file]);
 
-    $this->io()->success('Backup created "' . $gz_file_path . '.gz" (' . FormatterHelper::formatMemory(filesize($gz_file_path)) . ')');
+    $this->io()->success('Backup created "' . $gz_file_path . '" (' . FormatterHelper::formatMemory(filesize($gz_file_path)) . ')');
   }
 
 }

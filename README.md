@@ -4,7 +4,7 @@
 ## Installation
 
 ```
-composer require wwm/drush-drupal-manager
+composer require wickwood-llc/drush-drupal-manager
 ```
 
 ## Usage

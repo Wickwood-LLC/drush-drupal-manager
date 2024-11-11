@@ -1,5 +1,5 @@
 {
-  "name": "wwm/drush-drupal-manager",
+  "name": "wickwood-llc/drush-drupal-manager",
   "description": "Allows you to manage Drupal sites",
   "type": "drupal-drush",
   "require": {

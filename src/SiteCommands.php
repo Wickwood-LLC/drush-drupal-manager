@@ -16,7 +16,7 @@ class SiteCommands extends DrushCommands {
   #[CLI\Command(name: 'site:backup', aliases: [])]
   #[CLI\Argument(name: 'description', description: 'Describe the backup. It will become part of the backup file so make it not too long.')]
   public function get($description) {
-    print_r(Settings::get($setting));
+    print_r($description);
   }
 
 }

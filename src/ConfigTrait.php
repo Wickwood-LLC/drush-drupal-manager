@@ -28,4 +28,18 @@ trait ConfigTrait {
         $ddm_config = $this->getDDMConfig();
         return $ddm_config['backup-dir'];
     }
+
+
+    public function validateBackupDir(&$message): string | bool {
+        $backup_dir = $this->getBackupDir();
+        if (empty($backup_dir)) {
+            $message = "Backup directory is not configured!";
+            return FALSE;
+        }
+        else if (!is_dir($backup_dir)) {
+            $message = "Backup directory '$backup_dir' does not exist!";
+            return FALSE;
+        }
+        return $backup_dir;
+    }
 }

@@ -13,6 +13,7 @@ use Drush\Sql\SqlBase;
 use Drush\drush_drupal_manager\BackupFileInfo;
 use Drush\drush_drupal_manager\ConfigTrait;
 use Symfony\Component\Console\Helper\FormatterHelper;
+use Symfony\Component\Console\Question\ChoiceQuestion;
 
 /**
  * Command file for setting-get.
@@ -27,13 +28,10 @@ class SiteCommands extends DrushCommands {
   #[CLI\Command(name: 'site:backup', aliases: [])]
   #[CLI\Argument(name: 'description', description: 'Describe the backup. It will become part of the backup file so make it not too long.')]
   public function get($description) {
-    $backup_dir = $this->getBackupDir();
-    if (empty($backup_dir)) {
-      $this->io()->error("Backup directory is not configured!");
-      return static::EXIT_FAILURE;
-    }
-    else if (!is_dir($backup_dir)) {
-      $this->io()->error("Backup directory '$backup_dir' does not exist!");
+    $message = NULL;
+    $backup_dir = $this->validateBackupDir($message);
+    if (!$backup_dir) {
+      $this->io()->error($message);
       return static::EXIT_FAILURE;
     }
 
@@ -54,7 +52,7 @@ class SiteCommands extends DrushCommands {
     $site_full_path = Path::join($root, $site_path);
 
     $site_name = basename($site_full_path);
-    
+
     $finder = new Finder();
     $finder->in($site_full_path);
     // $finder->exclude('modules');
@@ -105,4 +103,106 @@ class SiteCommands extends DrushCommands {
     $this->io()->success('Backup created "' . $gz_file_path . '" (' . FormatterHelper::formatMemory(filesize($gz_file_path)) . ')');
   }
 
+  /**
+   * Restore a backup to the site
+   */
+  #[CLI\Command(name: 'site:restore', aliases: [])]
+  public function restore() {
+    $message = NULL;
+    $backup_dir = $this->validateBackupDir($message);
+    if (!$backup_dir) {
+      $this->io()->error($message);
+      return static::EXIT_FAILURE;
+    }
+
+    $bootstrapManager = Drush::bootstrapManager();
+    $bootstrapManager->doBootstrap(DrupalBootLevels::FULL);
+    $root = $bootstrapManager->getRoot();
+
+    $platform_name = basename($root);
+
+    $site_path = \Drupal::getContainer()->getParameter('site.path');
+    $site_full_path = Path::join($root, $site_path);
+
+    $site_name = basename($site_full_path);
+
+    $finder = new Finder();
+    $finder->name( $site_name . '--' . $platform_name . '--*.ddm.tar.gz');
+
+    $finder->depth('== 0'); // Not to search within subdirectories.
+    $finder->sortByModifiedTime();
+    $finder->reverseSorting();
+
+    $backups = [];
+
+    foreach ($finder->in($backup_dir) as $file) {
+      $backup_file_info = new BackupFileInfo($site_name, $file);
+      $backups[] = $backup_file_info;
+    }
+
+    if (!empty($backups)) {
+      $question = new ChoiceQuestion(
+          'Please choose a backup to be restored',
+          // choices can also be PHP objects that implement __toString() method
+          array_merge(['Cancel'],  $backups),
+          0
+      );
+      $question->setErrorMessage('Selection %s is invalid.');
+
+      $selected_backup_file_info = $this->io()->askQuestion($question );
+
+      if (is_string($selected_backup_file_info)) {
+          $this->io()->writeln('<comment>Operation has been cancelled.</comment>');
+      }
+      else {
+        /** @var \Drush\drush_drupal_manager\BackupFileInfo $selected_backup_file_info */
+        // $selected_backup_file_info = $backups[$selected_option];
+        // $file_system = new Filesystem();
+        $this->io()->writeln('You have just selected:');
+        $this->io()->writeln($selected_backup_file_info);
+
+        $selected_backup_file_info->getBasename();
+
+        $backup_file_path = Path::join($backup_dir, $selected_backup_file_info->getBasename());
+        $extract_dir = rtrim($selected_backup_file_info->getBasename(), BackupFileInfo::BACKUP_EXTENSION . '.gz');
+
+        $backup_file_path_tar = rtrim($backup_file_path, '.gz');
+
+        $this->gunzip($backup_file_path, $backup_file_path_tar);
+        $this->untar($backup_file_path_tar, $extract_dir);
+      }
+    }
+  }
+
+  /**
+   * Unzip a gzip file.
+   */
+  public function gunzip($gz_file_path, $target_file_path) {
+    $gz = gzopen($gz_file_path, 'rb');
+
+    if (file_exists($target_file_path)) {
+      unlink($target_file_path);
+    }
+    $dest = fopen($target_file_path, 'wb');
+
+    stream_copy_to_stream($gz, $dest);
+    gzclose($gz);
+    fclose($dest);
+  }
+
+  public function untar($tar_file_path) {
+    // $p = new \PharData($backup_file_path);
+    // $p->decompress(); // creates /path/to/my.tar
+
+    $file_system = new Filesystem();
+    $extract_dir_full_path = rtrim($tar_file_path, '.tar');
+    if ($file_system->exists($extract_dir_full_path)) {
+      $this->io()->writeln('Remove extration directory');
+      $file_system->remove($extract_dir_full_path);
+    }
+
+    // // unarchive from the tar
+    $phar = new \PharData($tar_file_path);
+    $phar->extractTo($extract_dir_full_path);
+  }
 }

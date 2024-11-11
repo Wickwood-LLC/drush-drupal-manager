@@ -1,0 +1,23 @@
+{
+  "name": "wwm/drush-drupal-manager",
+  "description": "Allows you to manage Drupal sites",
+  "type": "drupal-drush",
+  "require": {
+    "drush/drush": "^11.0 || ^12.0 || ^13.0"
+  },
+  "require-dev": {
+    "drupal/core": "^10.0 | ^11.0"
+  },
+  "license": "GPL-2.0+",
+  "authors": [
+    {
+      "name": "Junaid PV",
+      "email": "junu.pv@ngmail.com",
+      "homepage": "https://junix.in",
+      "role": "Developer"
+    }
+  ],
+  "config": {
+    
+  }
+}

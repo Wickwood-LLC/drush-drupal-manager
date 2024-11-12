@@ -176,16 +176,18 @@ class SiteCommands extends DrushCommands {
 
         $backup_file_path = Path::join($backup_dir, $selected_backup_file_info->getBasename());
 
+        $this->io()->writeln('Extracting backup files ...');
         $backup_file_path_tar = $this->gunzip($backup_file_path);
         $extract_dir = $this->untar($backup_file_path_tar, $site_full_path . '-extract');
 
         // $file_system->remove(Path::join($site_full_path, 'files'));
         // $file_system->remove(Path::join($site_full_path, 'private'));
   
-        $old_site_path = $site_full_path . '-old';
+        $old_site_path = $site_full_path . '--ddm-old';
         // Delete -odl suffix directory if existing.
         $file_system->remove($old_site_path);
 
+        $this->io()->writeln('Creating temporary backup of current site files ...');
         // Rename orginal site directory to add -old suffix.
         $file_system->rename($site_full_path, $old_site_path);
         // Rename extracted directory as site directory.
@@ -199,40 +201,49 @@ class SiteCommands extends DrushCommands {
           $this->updateDrushRC($drushrc_file_path, $settings);
         }
 
-        $this->io()->writeln('Clearing database content ...');
-        $this->clearDatabase($settings);
-
         $options = $this->dbOptions();
         $sql = SqlBase::create($options);
 
-        $db_input = new InputStream();
+        $db_dump_file_path = Path::join($site_full_path, static::DB_DUMB_FILE_NAME) . '.gz';
+
+        if ($file_system->exists($db_dump_file_path)) {
+          $db_file = gzopen($db_dump_file_path, 'rb');
+        }
+        else {
+          $db_dump_file_path = Path::join($site_full_path, static::DB_DUMB_FILE_NAME);
+          if ($file_system->exists($db_dump_file_path)) {
+            $db_file = fopen($db_dump_file_path, 'r');
+          }
+          else {
+            $this->io()->warning('Database dump not existing in the backup!');
+
+            $this->io()->writeln('Rolling back to original files ...');
+            // Undo directory renaming done above.
+            $file_system->rename($site_full_path, $extract_dir);
+            // Rename orginal site directory to add -old suffix.
+            $file_system->rename($old_site_path, $site_full_path);
+
+            $this->io()->error('Please make sure the backup file is valid!');
+            return static::EXIT_FAILURE;
+          }
+        }
+
+        $this->io()->writeln('Clearing database content ...');
+        $this->clearDatabase($settings);
+
+        $this->io()->writeln('Importing database form the backup ...');
 
         $sql = SqlBase::create($options);
         $process = $this->processManager()->shell($sql->connect(), null, $sql->getEnv());
-        
-        $db_dump_file_path = Path::join($site_full_path, static::DB_DUMB_FILE_NAME);
-        $gz = gzopen($db_dump_file_path, 'rb');
 
-        $process->setInput(stream_get_contents($gz));
+        $process->setInput(stream_get_contents($db_file));
         $process->mustRun($process->showRealtime());
 
         $file_system->remove($db_dump_file_path);
 
-
-        // $finder = new Finder();
-        // $finder->in($extract_dir);
-        // // $finder->exclude('modules');
-        // // $finder->notPath('config/local.config.php');
-        // $finder->notPath(static::DB_DUMB_FILE_NAME);
-        // $finder->notPath('settings.php');
-        // $finder->notPath('local.settings.php');
-        // $finder->notPath('drushrc.php');
-
-        // $this->io()->writeln('Restoring files from the backup ... ');
-        // $file_system->mirror($extract_dir, $site_full_path, $finder, ['override' => TRUE]);
-
-        // Delete -odl suffix directory.
+        // Delete -old suffix directory.
         $file_system->remove($old_site_path);
+        $this->io()->success('Backup restore completed.');
       }
     }
   }
@@ -265,7 +276,6 @@ class SiteCommands extends DrushCommands {
       $target_directory = rtrim($tar_file_path, '.tar');
     }
     if ($file_system->exists($target_directory)) {
-      $this->io()->writeln('Remove extration directory');
       $file_system->remove($target_directory);
     }
 

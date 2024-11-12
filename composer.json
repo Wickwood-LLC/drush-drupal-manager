@@ -9,7 +9,7 @@
     "symfony/orm-pack": "^2.3"
   },
   "require-dev": {
-    "drupal/core": "^10.0 | ^11.0"
+    "drupal/core": "^9.5 || ^10.0 | ^11.0"
   },
   "autoload": {
     "psr-4": {

@@ -12,8 +12,12 @@ use Drush\Boot\DrupalBootLevels;
 use Drush\Sql\SqlBase;
 use Drush\drush_drupal_manager\BackupFileInfo;
 use Drush\drush_drupal_manager\ConfigTrait;
+use Drush\drush_drupal_manager\SiteSettingsTrait;
+use Drush\drush_drupal_manager\DatabaseTrait;
 use Symfony\Component\Console\Helper\FormatterHelper;
 use Symfony\Component\Console\Question\ChoiceQuestion;
+use Symfony\Component\Process\Process;
+use Symfony\Component\Process\InputStream;
 
 /**
  * Command file for setting-get.
@@ -21,7 +25,30 @@ use Symfony\Component\Console\Question\ChoiceQuestion;
 class SiteCommands extends DrushCommands {
 
   use ConfigTrait;
+  use SiteSettingsTrait;
+  use DatabaseTrait;
 
+  const DB_DUMB_FILE_NAME = 'database.ddm.sql';
+
+  public function dbOptions() {
+
+    $options = [
+      'create-db' => false,
+      'data-only' => false,
+      'ordered-dump' => false,
+      'gzip' => TRUE,
+      'extra' => NULL,
+      'extra-dump' => NULL,
+      'format' => 'null',
+      'skip-tables-key' => '',
+      'skip-tables-list' => '',
+      'structure-tables-key' => '',
+      'structure-tables-list' => '',
+      'tables-key' => '',
+      'tables-list' => '',
+    ];
+    return $options;
+  }
   /**
    * Create backup for the site
    */
@@ -60,22 +87,8 @@ class SiteCommands extends DrushCommands {
     $this->io()->writeln('Copying files from new release ... ');
     $file_system->mirror($site_full_path, $temporary_file, $finder, ['override' => TRUE]);
 
-    $options = [
-      'result-file' => Path::join($temporary_file, 'database.ddm.sql'),
-      'create-db' => false,
-      'data-only' => false,
-      'ordered-dump' => false,
-      'gzip' => TRUE,
-      'extra' => NULL,
-      'extra-dump' => NULL,
-      'format' => 'null',
-      'skip-tables-key' => '',
-      'skip-tables-list' => '',
-      'structure-tables-key' => '',
-      'structure-tables-list' => '',
-      'tables-key' => '',
-      'tables-list' => '',
-    ];
+    $options = $this->dbOptions();
+    $options['result-file'] = Path::join($temporary_file, static::DB_DUMB_FILE_NAME);
 
     $this->io()->writeln('Creating database dump ... ');
     $sql = SqlBase::create($options);
@@ -157,14 +170,69 @@ class SiteCommands extends DrushCommands {
       else {
         /** @var \Drush\drush_drupal_manager\BackupFileInfo $selected_backup_file_info */
         // $selected_backup_file_info = $backups[$selected_option];
-        // $file_system = new Filesystem();
+        $file_system = new Filesystem();
         $this->io()->writeln('You have just selected:');
         $this->io()->writeln($selected_backup_file_info);
 
         $backup_file_path = Path::join($backup_dir, $selected_backup_file_info->getBasename());
 
         $backup_file_path_tar = $this->gunzip($backup_file_path);
-        $extract_dir = $this->untar($backup_file_path_tar);
+        $extract_dir = $this->untar($backup_file_path_tar, $site_full_path . '-extract');
+
+        // $file_system->remove(Path::join($site_full_path, 'files'));
+        // $file_system->remove(Path::join($site_full_path, 'private'));
+  
+        $old_site_path = $site_full_path . '-old';
+        // Delete -odl suffix directory if existing.
+        $file_system->remove($old_site_path);
+
+        // Rename orginal site directory to add -old suffix.
+        $file_system->rename($site_full_path, $old_site_path);
+        // Rename extracted directory as site directory.
+        $file_system->rename($extract_dir, $site_full_path);
+
+        $settings = $this->getSettingsFromFile(Path::join($old_site_path, 'settings.php'));
+
+        $drushrc_file_path = Path::join($site_full_path, 'drushrc.php');
+        if ($file_system->exists($drushrc_file_path)) {
+          $this->io()->writeln('Updating drushrc.php file ...');
+          $this->updateDrushRC($drushrc_file_path, $settings);
+        }
+
+        $this->io()->writeln('Clearing database content ...');
+        $this->clearDatabase($settings);
+
+        $options = $this->dbOptions();
+        $sql = SqlBase::create($options);
+
+        $db_input = new InputStream();
+
+        $sql = SqlBase::create($options);
+        $process = $this->processManager()->shell($sql->connect(), null, $sql->getEnv());
+        
+        $db_dump_file_path = Path::join($site_full_path, static::DB_DUMB_FILE_NAME);
+        $gz = gzopen($db_dump_file_path, 'rb');
+
+        $process->setInput(stream_get_contents($gz));
+        $process->mustRun($process->showRealtime());
+
+        $file_system->remove($db_dump_file_path);
+
+
+        // $finder = new Finder();
+        // $finder->in($extract_dir);
+        // // $finder->exclude('modules');
+        // // $finder->notPath('config/local.config.php');
+        // $finder->notPath(static::DB_DUMB_FILE_NAME);
+        // $finder->notPath('settings.php');
+        // $finder->notPath('local.settings.php');
+        // $finder->notPath('drushrc.php');
+
+        // $this->io()->writeln('Restoring files from the backup ... ');
+        // $file_system->mirror($extract_dir, $site_full_path, $finder, ['override' => TRUE]);
+
+        // Delete -odl suffix directory.
+        $file_system->remove($old_site_path);
       }
     }
   }
@@ -188,20 +256,22 @@ class SiteCommands extends DrushCommands {
     return $target_file_path;
   }
 
-  public function untar($tar_file_path) {
+  public function untar($tar_file_path, $target_directory) {
     // $p = new \PharData($backup_file_path);
     // $p->decompress(); // creates /path/to/my.tar
 
     $file_system = new Filesystem();
-    $extract_dir_full_path = rtrim($tar_file_path, '.tar');
-    if ($file_system->exists($extract_dir_full_path)) {
+    if (!$target_directory) {
+      $target_directory = rtrim($tar_file_path, '.tar');
+    }
+    if ($file_system->exists($target_directory)) {
       $this->io()->writeln('Remove extration directory');
-      $file_system->remove($extract_dir_full_path);
+      $file_system->remove($target_directory);
     }
 
     // // unarchive from the tar
     $phar = new \PharData($tar_file_path);
-    $phar->extractTo($extract_dir_full_path);
-    return $extract_dir_full_path;
+    $phar->extractTo($target_directory);
+    return $target_directory;
   }
 }

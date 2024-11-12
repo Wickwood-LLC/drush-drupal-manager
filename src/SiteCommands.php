@@ -16,8 +16,6 @@ use Drush\drush_drupal_manager\SiteSettingsTrait;
 use Drush\drush_drupal_manager\DatabaseTrait;
 use Symfony\Component\Console\Helper\FormatterHelper;
 use Symfony\Component\Console\Question\ChoiceQuestion;
-use Symfony\Component\Process\Process;
-use Symfony\Component\Process\InputStream;
 
 /**
  * Command file for setting-get.
@@ -169,7 +167,6 @@ class SiteCommands extends DrushCommands {
       }
       else {
         /** @var \Drush\drush_drupal_manager\BackupFileInfo $selected_backup_file_info */
-        // $selected_backup_file_info = $backups[$selected_option];
         $file_system = new Filesystem();
         $this->io()->writeln('You have just selected:');
         $this->io()->writeln($selected_backup_file_info);
@@ -179,9 +176,6 @@ class SiteCommands extends DrushCommands {
         $this->io()->writeln('Extracting backup files ...');
         $backup_file_path_tar = $this->gunzip($backup_file_path);
         $extract_dir = $this->untar($backup_file_path_tar, $site_full_path . '-extract');
-
-        // $file_system->remove(Path::join($site_full_path, 'files'));
-        // $file_system->remove(Path::join($site_full_path, 'private'));
   
         $old_site_path = $site_full_path . '--ddm-old';
         // Delete -odl suffix directory if existing.
@@ -268,9 +262,6 @@ class SiteCommands extends DrushCommands {
   }
 
   public function untar($tar_file_path, $target_directory) {
-    // $p = new \PharData($backup_file_path);
-    // $p->decompress(); // creates /path/to/my.tar
-
     $file_system = new Filesystem();
     if (!$target_directory) {
       $target_directory = rtrim($tar_file_path, '.tar');
@@ -279,7 +270,7 @@ class SiteCommands extends DrushCommands {
       $file_system->remove($target_directory);
     }
 
-    // // unarchive from the tar
+    // Unarchive from the tar
     $phar = new \PharData($tar_file_path);
     $phar->extractTo($target_directory);
     return $target_directory;

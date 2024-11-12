@@ -13,7 +13,8 @@
   },
   "autoload": {
     "psr-4": {
-      "Drush\\drush_drupal_manager\\": "src"
+      "Drush\\drush_drupal_manager\\": "src",
+      "Drush\\Commands\\drush_drupal_manager\\": "src/Commands"
     }
   },
   "license": "GPL-2.0+",
